@@ -41,6 +41,7 @@ class Question(models.Model):
 class UsersResponses(models.Model):
     question_id = models.ForeignKey('Question', on_delete=models.CASCADE)
     command_id = models.UUIDField()  # Add the command_id field
+    user_email = models.EmailField(default="Not Provided")
     user_answer = models.TextField()
     original_answer = models.TextField(default="Not Provided")  # Add a default value
     score = models.IntegerField(default=0)

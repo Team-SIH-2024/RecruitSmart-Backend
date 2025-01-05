@@ -16,7 +16,7 @@ from .serializers import JobPostSerializer
 
 from difflib import SequenceMatcher
 
-
+import urllib.parse
 import os
 from django.core.files.storage import FileSystemStorage
 
@@ -31,6 +31,11 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+
+
+from expert_dashboard.models import InterviewSchedule
+
+
 
 class ResumeUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
@@ -274,6 +279,7 @@ def submit_response(request):
             data = json.loads(request.body)
             question_id = data.get("question_id")
             user_answer = data.get("user_answer")
+            email=data.get("user_email")
 
             if not question_id or not user_answer:
                 return JsonResponse({"error": "Invalid input."}, status=400)
@@ -295,6 +301,7 @@ def submit_response(request):
             response = UsersResponses.objects.create(
                 question_id=question,
                 command_id=question.command_id,
+                user_email=email,
                 user_answer=user_answer,
                 original_answer=question.answer,
                 score=score,
@@ -317,9 +324,18 @@ class JobPostListView(APIView):
     def get(self, request):
         try:
             # Fetch active job posts only
-            active_jobs = JobPost.objects.filter(is_active=True).order_by('-created_at')
+            gmail = request.query_params.get('gmail')
+            if not gmail:
+                return Response({"error": "Gmail is required"}, status=status.HTTP_400_BAD_REQUEST)
+            print(f"Received Gmail: {gmail}")
             
+            scheduled_job_ids = InterviewSchedule.objects.filter(user_gmail=gmail).values_list('job_id', flat=True)
+            scheduled_job_ids_list = [str(job_id) for job_id in scheduled_job_ids]
+            print(scheduled_job_ids_list)
+            active_jobs = JobPost.objects.filter(command_id__in=scheduled_job_ids_list,is_active=True).order_by('-created_at')
+            print(active_jobs)
             if not active_jobs.exists():
+                print("No active Jobs")
                 return Response({"message": "No jobs are available."}, status=status.HTTP_404_NOT_FOUND)
             
             # Serialize the data
@@ -434,7 +450,7 @@ def user_login(request):
                 return JsonResponse({"error": "Invalid email or password."}, status=401)
 
             # Login successful
-            return JsonResponse({"message": "Login successful!"}, status=200)
+            return JsonResponse({"message": "Login successful!","username": user.email}, status=200)
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)

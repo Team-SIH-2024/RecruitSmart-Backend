@@ -18,8 +18,8 @@ nltk.download('wordnet', quiet=True)
 from transformers import AutoTokenizer, AutoModel
 
 # Global tokenizer and model
-TOKENIZER = AutoTokenizer.from_pretrained('microsoft/deberta-v3-base')
-MODEL = AutoModel.from_pretrained('microsoft/deberta-v3-base')
+# TOKENIZER = AutoTokenizer.from_pretrained('microsoft/deberta-v3-base')
+# MODEL = AutoModel.from_pretrained('microsoft/deberta-v3-base')
 
 def evaluate_technical_answer(question, expected_answer, candidate_answer, keywords):
     """

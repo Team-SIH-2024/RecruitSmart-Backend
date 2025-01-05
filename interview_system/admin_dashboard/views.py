@@ -14,8 +14,45 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import JobPost, Question
+from django.db.models import Sum
+from .models import UsersResponses
+from user_dashboard.models import User
 
+def overall_performance(request):
+    try:
+        # Aggregate overall scores
+        performance_data = (
+            UsersResponses.objects
+            .values('user_email', 'command_id')  # Group by user and job interview
+            .annotate(total_score=Sum('score'))  # Sum scores for each user-interview combo
+            .order_by('-total_score')  # Order by highest score
+        )
 
+        # Create a list of email addresses for batch querying
+        user_emails = [data['user_email'] for data in performance_data]
+
+        # Fetch user details in a single query to optimize performance
+        users = User.objects.filter(email__in=user_emails).values('email', 'first_name', 'last_name')
+
+        # Create a dictionary for quick lookup
+        user_dict = {user['email']: user for user in users}
+
+        # Enrich the performance data with user details
+        enriched_data = [
+            {
+                'candidate_name': f"{user_dict.get(data['user_email'], {}).get('first_name', 'Unknown')} "
+                                   f"{user_dict.get(data['user_email'], {}).get('last_name', 'Unknown')}",
+                'email': data['user_email'],
+                'command_id': data['command_id'],
+                'total_score': data['total_score'],
+            }
+            for data in performance_data
+        ]
+
+        return JsonResponse(enriched_data, safe=False, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 @csrf_exempt
 def upload_selected_user(request):
@@ -123,7 +160,8 @@ def admin_login(request):
                 return JsonResponse({"error": "Invalid email or password."}, status=401)
 
             # Login successful
-            return JsonResponse({"message": "Admin login successful!"}, status=200)
+            return JsonResponse({"message": "Admin login successful!",
+                                 "username": admin_user.email}, status=200)
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
