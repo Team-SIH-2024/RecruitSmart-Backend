@@ -9,4 +9,5 @@ urlpatterns = [
     path('login/', views.user_login, name='user-login'),
     path('jobs/', views.JobPostListView.as_view(), name='job-list'),
     path('upload-resume/<str:command_id>/', views.ResumeUploadView.as_view(), name='resume_upload'),
+    path('user-profile/', views.get_user_profile, name='user_profile'),
 ]

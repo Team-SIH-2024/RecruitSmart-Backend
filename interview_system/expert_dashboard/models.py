@@ -14,4 +14,12 @@ class InterviewSchedule(models.Model):
         return f"Interview for {self.user_gmail} scheduled at {self.scheduled_time} for Job ID {self.job_id}"
 
 
+class Expert(models.Model):
+    first_name = models.CharField(max_length=50)
+    last_name = models.CharField(max_length=50)
+    mobile_number = models.CharField(max_length=15, unique=True)
+    email = models.EmailField(unique=True)
+    password = models.CharField(max_length=128)  # Ideally hashed
 
+    def __str__(self):
+        return self.email

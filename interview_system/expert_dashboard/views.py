@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from admin_dashboard.models import JobPost,Question
-from .models import InterviewSchedule
+from .models import InterviewSchedule,Expert
 from user_dashboard.models import User
 
 import json
@@ -21,6 +21,36 @@ from .serializers import UserSerializer, JobPostSerializer,UserSerializer
 from rest_framework import status
 from datetime import datetime
 
+
+
+@csrf_exempt
+def expert_login(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            email = data.get("email")
+            password = data.get("password")
+
+            # Validate input
+            if not email or not password:
+                return JsonResponse({"error": "Email and password are required."}, status=400)
+
+            # Authenticate admin
+            try:
+                expert_user = Expert.objects.get(email=email)
+                if expert_user.password != password:  # Use a secure hash function in production
+                    return JsonResponse({"error": "Invalid email or password."}, status=401)
+            except Expert.DoesNotExist:
+                return JsonResponse({"error": "Invalid email or password."}, status=401)
+
+            # Login successful
+            return JsonResponse({"message": "Expert login successful!",
+                                 "username": expert_user.email}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
 
 
 @api_view(['POST'])

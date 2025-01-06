@@ -32,10 +32,49 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-
+from rest_framework.decorators import api_view  
 from expert_dashboard.models import InterviewSchedule
+from django.contrib.auth.decorators import login_required
 
+@api_view(['GET'])
+def get_user_profile(request):
+    """
+    API to fetch user profile details based on email (gmail).
+    """
+    try:
+        # Get the 'gmail' parameter from the request
+        gmail = request.GET.get('gmail', None)
 
+        if not gmail:
+            return Response(
+                {"error": "Email (gmail) parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Fetch the user from the database
+        user = User.objects.get(email=gmail)
+
+        # Construct the response data
+        user_data = {
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "mobile_number": getattr(user, "mobile_number", "Not Provided"),
+        }
+
+        return Response(user_data, status=status.HTTP_200_OK)
+
+    except User.DoesNotExist:
+        return Response(
+            {"error": "User not found for the given email."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    except Exception as e:
+        return Response(
+            {"error": "An error occurred while fetching the user profile.", "details": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 class ResumeUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
@@ -320,30 +359,83 @@ def submit_response(request):
 
 
 
+# class JobPostListView(APIView):
+#     def get(self, request):
+#         try:
+#             # Fetch active job posts only
+#             gmail = request.query_params.get('gmail')
+#             if not gmail:
+#                 return Response({"error": "Gmail is required"}, status=status.HTTP_400_BAD_REQUEST)
+#             print(f"Received Gmail: {gmail}")
+            
+#             scheduled_job_ids = InterviewSchedule.objects.filter(user_gmail=gmail).values_list('job_id', flat=True)
+#             scheduled_job_ids_list = [str(job_id) for job_id in scheduled_job_ids]
+#             print(scheduled_job_ids_list)
+#             active_jobs = JobPost.objects.filter(command_id__in=scheduled_job_ids_list,is_active=True).order_by('-created_at')
+#             print(active_jobs)
+#             if not active_jobs.exists():
+#                 print("No active Jobs")
+#                 return Response({"message": "No jobs are available."}, status=status.HTTP_404_NOT_FOUND)
+            
+#             # Serialize the data
+#             serializer = JobPostSerializer(active_jobs, many=True)
+#             return Response(serializer.data, status=status.HTTP_200_OK)
+
+#         except Exception as e:
+#             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from django.db.models import CharField, Value as V
+from django.db.models.functions import Cast
+
 class JobPostListView(APIView):
     def get(self, request):
         try:
-            # Fetch active job posts only
             gmail = request.query_params.get('gmail')
             if not gmail:
                 return Response({"error": "Gmail is required"}, status=status.HTTP_400_BAD_REQUEST)
-            print(f"Received Gmail: {gmail}")
-            
-            scheduled_job_ids = InterviewSchedule.objects.filter(user_gmail=gmail).values_list('job_id', flat=True)
-            scheduled_job_ids_list = [str(job_id) for job_id in scheduled_job_ids]
-            print(scheduled_job_ids_list)
-            active_jobs = JobPost.objects.filter(command_id__in=scheduled_job_ids_list,is_active=True).order_by('-created_at')
-            print(active_jobs)
+
+            # Fetch scheduled job IDs for the user
+            scheduled_jobs = InterviewSchedule.objects.filter(user_gmail=gmail).values_list('job_id', flat=True)
+            # print("Scheduled Jobs:", list(scheduled_jobs))  # Debug log
+
+            if not scheduled_jobs:
+                return Response({"message": "No jobs available for this user."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Ensure both fields are treated as strings for the query
+            scheduled_jobs = list(scheduled_jobs)  # Convert queryset to a list
+            active_jobs = (
+                JobPost.objects
+                .annotate(command_id_str=Cast('command_id', output_field=CharField()))
+                .filter(command_id_str__in=scheduled_jobs, is_active=True)
+                .order_by('-created_at')
+            )
+            #print("Active Jobs Query:", active_jobs.query)  # Debug log
+
             if not active_jobs.exists():
-                print("No active Jobs")
-                return Response({"message": "No jobs are available."}, status=status.HTTP_404_NOT_FOUND)
-            
-            # Serialize the data
-            serializer = JobPostSerializer(active_jobs, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+                return Response({"message": "No active jobs available."}, status=status.HTTP_404_NOT_FOUND)
+
+            response_data = []
+            for job in active_jobs:
+                # Fetch schedule for the current job
+                schedule = InterviewSchedule.objects.filter(user_gmail=gmail, job_id=job.command_id).first()
+                print("Schedule for Job:", job.command_id, schedule)  # Debug log
+
+                response_data.append({
+                    "id": job.id,
+                    "title": job.title,
+                    "description": job.description,
+                    "command_id": job.command_id,
+                    "created_at": job.created_at,
+                    "scheduled_time": schedule.scheduled_time if schedule else None,
+                })
+
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
+            print(f"Error Occurred: {e}")  # Debug log for exception
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 
@@ -387,7 +479,7 @@ def fetch_next_question(request):
 def user_signup(request):
     if request.method == "POST":
         try:
-            data = json.loads(request.body)  # Parse JSON body
+            data = json.loads(request.body)  # Parse JSON body  
             first_name = data.get("firstName")
             last_name = data.get("lastName")
             mobile_number = data.get("mobileNumber")
