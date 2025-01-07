@@ -18,6 +18,47 @@ from django.db.models import Sum
 from .models import UsersResponses
 from user_dashboard.models import User
 
+# def overall_performance(request):
+#     try:
+#         # Aggregate overall scores
+#         performance_data = (
+#             UsersResponses.objects
+#             .values('user_email', 'command_id')  # Group by user and job interview
+#             .annotate(total_score=Sum('score'))  # Sum scores for each user-interview combo
+#             .order_by('-total_score')  # Order by highest score
+#         )
+
+#         # Create a list of email addresses for batch querying
+#         user_emails = [data['user_email'] for data in performance_data]
+
+#         # Fetch user details in a single query to optimize performance
+#         users = User.objects.filter(email__in=user_emails).values('email', 'first_name', 'last_name')
+
+#         # Create a dictionary for quick lookup
+#         user_dict = {user['email']: user for user in users}
+
+#         # Enrich the performance data with user details
+#         enriched_data = [
+#             {
+#                 'candidate_name': f"{user_dict.get(data['user_email'], {}).get('first_name', 'Unknown')} "
+#                                    f"{user_dict.get(data['user_email'], {}).get('last_name', 'Unknown')}",
+#                 'email': data['user_email'],
+#                 'command_id': data['command_id'],
+#                 'total_score': data['total_score'],
+#             }
+#             for data in performance_data
+#         ]
+
+#         return JsonResponse(enriched_data, safe=False, status=200)
+
+#     except Exception as e:
+#         return JsonResponse({"error": str(e)}, status=500)
+
+
+
+from django.db.models import Sum
+from django.http import JsonResponse
+
 def overall_performance(request):
     try:
         # Aggregate overall scores
@@ -27,23 +68,33 @@ def overall_performance(request):
             .annotate(total_score=Sum('score'))  # Sum scores for each user-interview combo
             .order_by('-total_score')  # Order by highest score
         )
+        #print("Performance Data:", performance_data)  # Debugging log
 
         # Create a list of email addresses for batch querying
         user_emails = [data['user_email'] for data in performance_data]
 
-        # Fetch user details in a single query to optimize performance
+        # Fetch user details in a single query
         users = User.objects.filter(email__in=user_emails).values('email', 'first_name', 'last_name')
-
-        # Create a dictionary for quick lookup
         user_dict = {user['email']: user for user in users}
+        #print("User Dictionary:", user_dict)  # Debugging log
 
-        # Enrich the performance data with user details
+        # Convert command_id to strings for comparison
+        command_ids = [str(data['command_id']) for data in performance_data]
+        #print("Command IDs:", command_ids)  # Debugging log
+
+        # Fetch job titles using command_id
+        job_posts = JobPost.objects.filter(command_id__in=command_ids).values('command_id', 'title')
+        job_dict = {str(job['command_id']): job['title'] for job in job_posts}
+        #print("Job Dictionary:", job_dict)  # Debugging log
+
+        # Enrich the performance data
         enriched_data = [
             {
                 'candidate_name': f"{user_dict.get(data['user_email'], {}).get('first_name', 'Unknown')} "
                                    f"{user_dict.get(data['user_email'], {}).get('last_name', 'Unknown')}",
                 'email': data['user_email'],
-                'command_id': data['command_id'],
+                'command_id': str(data['command_id']),  # Convert to string for consistency
+                'job_title': job_dict.get(str(data['command_id']), 'Unknown'),  # Lookup using string format
                 'total_score': data['total_score'],
             }
             for data in performance_data
@@ -53,6 +104,8 @@ def overall_performance(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
 
 @csrf_exempt
 def upload_selected_user(request):
