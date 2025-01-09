@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from admin_dashboard.models import JobPost,Question
 from .models import InterviewSchedule,Expert
 from user_dashboard.models import User
-
+from datetime import datetime, timedelta
 import json
 import nltk
 from nltk.tokenize import word_tokenize
@@ -21,6 +21,34 @@ from .serializers import UserSerializer, JobPostSerializer,UserSerializer
 from rest_framework import status
 from datetime import datetime
 
+
+from django.core.mail import send_mail
+from django.conf import settings
+
+def send_gmail(subject, message, recipient_list):
+    """
+    Sends an email using Gmail.
+    
+    Args:
+        subject (str): Subject of the email.
+        message (str): Body of the email.
+        recipient_list (list): List of recipient email addresses.
+
+    Returns:
+        bool: True if email is sent successfully, False otherwise.
+    """
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=recipient_list,
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
 
 
 @csrf_exempt
@@ -58,6 +86,10 @@ def schedule_interview(request):
     try:
         # Extract data from the request
         user_gmail = request.data.get('user_gmail')
+
+
+        
+        
         job_id = request.data.get('job_id')
         scheduled_time_str = request.data.get('scheduled_time')
 
@@ -70,6 +102,27 @@ def schedule_interview(request):
             scheduled_time = datetime.fromisoformat(scheduled_time_str)
         except ValueError:
             return JsonResponse({'error': 'Invalid scheduled_time format. Expected ISO format (e.g., 2025-01-29T16:23).'}, status=400)
+        
+        subject = f"Interview Scheduled: Job ID {job_id}"
+        adjusted_scheduled_time = scheduled_time + timedelta(hours=5, minutes=30)
+        job_post = JobPost.objects.get(command_id=job_id)  # Assuming `job_id` corresponds to `command_id`
+        job_title = job_post.title
+        user = User.objects.get(email=user_gmail)
+        candidate_name = f"{user.first_name} {user.last_name}"
+        message = (
+            f"Dear {candidate_name},\n\n"
+            f"Your interview for {job_title} has been scheduled successfully.\n"
+            f"Scheduled Time: {adjusted_scheduled_time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"Please ensure that you are available at the specified time.\n\n"
+            f"Best regards,\n"
+            f"Interview Team"
+        )
+        recipient_list = [user_gmail]
+        if send_gmail(subject, message, recipient_list):
+            print("Email sent successfully!")
+        else:
+            print("email failed") 
+        
 
         # Create a new interview schedule entry
         interview_schedule = InterviewSchedule.objects.create(
